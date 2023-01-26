@@ -10,6 +10,8 @@ import GraphicsLayer from "esri/layers/GraphicsLayer";
 import Table from "./components/Table";
 import helper from "../connector";
 import Polygon from "esri/geometry/Polygon";
+// import geometryEngine from "esri/geometry/geometryEngine";
+// import Graphic from "esri/Graphic";
 
 export default class Widget extends React.PureComponent<
   AllWidgetProps<IMConfig>,
@@ -70,6 +72,8 @@ export default class Widget extends React.PureComponent<
     this.getAllJimuLayerViews = this.getAllJimuLayerViews.bind(this);
     this.connector_function = this.connector_function.bind(this);
     this.functionCounterIsChecked = this.functionCounterIsChecked.bind(this);
+    this.checkParenthesis = this.checkParenthesis.bind(this);
+    this.loopToGetString = this.loopToGetString.bind(this);
   }
 
   nls = (id: string) => {
@@ -156,7 +160,6 @@ export default class Widget extends React.PureComponent<
    ==============================================*/
 
   async getQueryAttribute(e) {
-    // console.log(e.currentTarget.attributes[1].value)
     if (!this.state.whereClauses.length) {
       let whereClause = {
         id: e.currentTarget.attributes[1].value,
@@ -259,7 +262,6 @@ export default class Widget extends React.PureComponent<
               results.then((result) => {
                 const detailThirdQuery = [];
                 result.features.forEach((el) => {
-                  // console.log(el.attributes)
                   detailThirdQuery.push({
                     value: Object.values(el.attributes),
                     label: Object.values(el.attributes),
@@ -387,7 +389,6 @@ export default class Widget extends React.PureComponent<
                 where: query.where,
               };
               layerView.visible = true;
-
               // displaying  data to table
               connector_function({ layerView, query });
             });
@@ -920,8 +921,19 @@ export default class Widget extends React.PureComponent<
           // console.log(
           //   `${firstQuery} IN (${"'" + secondQueryTarget.join("', '") + "'"})`
           // );
+          layerView.visible = true;
+
+          // displaying  data to table
+          connector_function({ layerView, query });
         } else {
-          query.where = `${firstQuery} IN (${secondQueryTarget.join(",")})`;
+          if (this.checkParenthesis(secondQueryTarget.join(","))) {
+            console.log("got bracket");
+            const stringFieldValue = this.loopToGetString(secondQueryTarget);
+            query.where = `${firstQuery} IN (${stringFieldValue})`;
+          } else {
+            console.log("not get brackets");
+            query.where = `${firstQuery} IN (${secondQueryTarget.join(",")})`;
+          }
           query.outFields = [`${firstQuery}`];
           layerView.filter = {
             where: query.where,
@@ -1053,7 +1065,6 @@ export default class Widget extends React.PureComponent<
     }
   };
 
-  
   // methods for attribute table
   getAllCheckedLayers = () => {
     const activeView = Widget.activeV;
@@ -1083,8 +1094,12 @@ export default class Widget extends React.PureComponent<
 
   connector_function = async (data) => {
     const { layerView, query } = data;
+    if (!query.outFields.includes("OBJECTID") && query.outFields[0] !== "*")
+      query.outFields = [...query.outFields, "OBJECTID"];
     const results = await layerView.layer.queryFeatures(query);
     let checkedLayer_ = [data.layerView.layer.id];
+    let resul = [];
+
     const selectedLayersContents = helper.getSelectedContentsLayer(
       [results.features],
       checkedLayer_
@@ -1101,6 +1116,11 @@ export default class Widget extends React.PureComponent<
       geometry: geometry,
       typeSelected: "contains",
     };
+
+    results?.features.forEach(function (data) {
+      layerView.highlight(data.attributes.OBJECTID);
+    });
+
     this.props.dispatch(
       appActions.widgetStatePropChange("value", "createTable", true)
     );
@@ -1145,16 +1165,36 @@ export default class Widget extends React.PureComponent<
       );
     }
   };
-
-  functionCounterIsChecked = (e,val)=>{
+  functionCounterIsChecked = (e, val) => {
     let counter = [...this.state.counterIsChecked];
-if(e.target.checked){
-  counter.push(val);
-  this.setState({counterIsChecked:counter});
-}else{
-  let index = counter.indexOf(val);
-  if(index>-1) counter.splice(index,1);
-  this.setState({counterIsChecked:counter});}
+    if (e.target.checked) {
+      counter.push(val);
+      this.setState({ counterIsChecked: counter });
+    } else {
+      let index = counter.indexOf(val);
+      if (index > -1) counter.splice(index, 1);
+      this.setState({ counterIsChecked: counter });
+    }
+  };
+
+  checkParenthesis(val: any) {
+    const regexVal = /(\d{3}|(\d{3}))/;
+    let status = false;
+    if (regexVal.test(val)) status = true;
+    return status;
+  }
+
+  loopToGetString(stringArr: string[]) {
+    let newString = " ";
+    if (stringArr.length) {
+      newString = JSON.stringify(stringArr[0]);
+      newString = newString.replace(/"/g, `'`);
+      for (let i = 1; i < stringArr.length; i++) {
+        const newStringVal = JSON.stringify(stringArr[i]).replace(/"/g, `'`);
+        newString += "," + newStringVal;
+      }
+    }
+    return newString;
   }
 
   //TODO config abilitare tab true/false
